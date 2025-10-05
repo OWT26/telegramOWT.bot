@@ -64,6 +64,13 @@ from telegram.ext import (
     filters,
 )
 
+# === debug/test handlers ===
+async def cmd_ping(update: Update, context: CallbackContext):
+    await update.message.reply_text("pong")
+
+async def error_handler(update: object, context: CallbackContext):
+    logging.exception("Unhandled error: %s", context.error)
+
 # -------------------- Config & Constants --------------------
 load_dotenv()
 BOT_TOKEN = os.getenv("BOT_TOKEN")
@@ -512,15 +519,21 @@ async def main():
     app: Application = (
         ApplicationBuilder()
         .token(BOT_TOKEN)
-        .rate_limiter(AIORateLimiter())
         .build()
     )
 
+    # --- handlers ---
+    # Админ-команды
+    app.add_handler(CommandHandler("setdispatch", cmd_setdispatch))
+    app.add_handler(CommandHandler("drivers", cmd_drivers))
+    app.add_handler(CommandHandler("exportcsv", cmd_exportcsv))
+
+    # Диалог
     conv = ConversationHandler(
         entry_points=[CommandHandler("start", cmd_start)],
         states={
             ASK_PIN: [MessageHandler(filters.TEXT & ~filters.COMMAND, pin_entry)],
-            ASK_MODE: [MessageHandler(filters.Regex("^(✅ Check In|🏁 Check Out)$"), choose_mode)],
+            ASK_MODE: [MessageHandler(filters.Regex(r"^(✅ Check In|🏁 Check Out)$"), choose_mode)],
             ASK_LOAD: [MessageHandler(filters.TEXT & ~filters.COMMAND, ask_load)],
             ASK_TRAILER: [MessageHandler(filters.TEXT & ~filters.COMMAND, ask_trailer)],
             ASK_LOCATION: [
@@ -531,35 +544,30 @@ async def main():
             ASK_TEMP: [MessageHandler(filters.TEXT & ~filters.COMMAND, ask_temp)],
             ASK_PHOTOS: [
                 MessageHandler(filters.PHOTO, ask_photos_photo),
-                MessageHandler(filters.Regex(r"(?i)^(готово|пропуск)$") | (filters.TEXT & ~filters.COMMAND), ask_photos_done),
+                MessageHandler(
+                    filters.Regex(r"(?i)^(готово|пропуск)$") | (filters.TEXT & ~filters.COMMAND),
+                    ask_photos_done,
+                ),
             ],
             ASK_NOTES: [MessageHandler(filters.TEXT & ~filters.COMMAND, ask_notes)],
             CONFIRM: [MessageHandler(filters.TEXT & ~filters.COMMAND, confirm)],
         },
-        fallbacks=[MessageHandler(filters.TEXT & ~filters.COMMAND, fallback_text), MessageHandler(filters.LOCATION, fallback_location)],
+        fallbacks=[
+            MessageHandler(filters.TEXT & ~filters.COMMAND, fallback_text),
+            MessageHandler(filters.LOCATION, fallback_location)
+        ],
         allow_reentry=True,
     )
-
-    # Admin commands
-    app.add_handler(CommandHandler("setdispatch", cmd_setdispatch))
-    app.add_handler(CommandHandler("drivers", cmd_drivers))
-    app.add_handler(CommandHandler("exportcsv", cmd_exportcsv))
-
     app.add_handler(conv)
 
-    await app.initialize()
-    await app.start()
-    print("Bot started. Press Ctrl+C to stop.")
-    try:
-        await asyncio.Event().wait()
-    except (KeyboardInterrupt, SystemExit):
-        pass
-    finally:
-        await app.stop()
-        await app.shutdown()
+    # Тестовая команда — проверка связи
+    app.add_handler(CommandHandler("ping", cmd_ping))
 
-# Small regex import used in ConversationHandler
-import re
+    # Логирование ошибок
+    app.add_error_handler(error_handler)
 
-if __name__ == "__main__":
-    asyncio.run(main())
+    # ВАЖНО: всегда очищаем вебхук и дропаем старые апдейты
+    await app.bot.delete_webhook(drop_pending_updates=True)
+
+    # Надёжный запуск поллинга (сам вызовет initialize/start/idle)
+    await app.run_polling(close_loop=False)
