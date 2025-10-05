@@ -531,7 +531,7 @@ async def main():
             ASK_TEMP: [MessageHandler(filters.TEXT & ~filters.COMMAND, ask_temp)],
             ASK_PHOTOS: [
                 MessageHandler(filters.PHOTO, ask_photos_photo),
-                MessageHandler(filters.Regex("^(готово|пропуск)$", flags=re.IGNORECASE) | (filters.TEXT & ~filters.COMMAND), ask_photos_done),
+                MessageHandler(filters.Regex(r"(?i)^(готово|пропуск)$") | (filters.TEXT & ~filters.COMMAND), ask_photos_done),
             ],
             ASK_NOTES: [MessageHandler(filters.TEXT & ~filters.COMMAND, ask_notes)],
             CONFIRM: [MessageHandler(filters.TEXT & ~filters.COMMAND, confirm)],
